@@ -1,7 +1,7 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/Anemail/anonaddy', '.']
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/anonaddy', '.']
 images:
-- 'gcr.io/Anemail/anonaddy'
+- 'gcr.io/$PROJECT_ID/anonaddy'
 options:
   logging: 'CLOUD_LOGGING_ONLY'  # または 'NONE'
