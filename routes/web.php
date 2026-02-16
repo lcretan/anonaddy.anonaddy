@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AliasExportController;
 use App\Http\Controllers\AliasImportController;
+use App\Http\Controllers\AliasSeparatorController;
 use App\Http\Controllers\Auth\ApiAuthenticationController;
 use App\Http\Controllers\Auth\BackupCodeController;
 use App\Http\Controllers\Auth\ForgotUsernameController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Auth\WebauthnController;
 use App\Http\Controllers\Auth\WebauthnEnabledKeyController;
 use App\Http\Controllers\BannerLocationController;
 use App\Http\Controllers\BrowserSessionController;
+use App\Http\Controllers\DarkModeController;
 use App\Http\Controllers\DeactivateAliasController;
 use App\Http\Controllers\DefaultAliasDomainController;
 use App\Http\Controllers\DefaultAliasFormatController;
@@ -18,7 +20,6 @@ use App\Http\Controllers\DefaultRecipientController;
 use App\Http\Controllers\DefaultUsernameController;
 use App\Http\Controllers\DisplayFromFormatController;
 use App\Http\Controllers\DomainVerificationController;
-use App\Http\Controllers\DownloadableFailedDeliveryController;
 use App\Http\Controllers\EmailSubjectController;
 use App\Http\Controllers\FromNameController;
 use App\Http\Controllers\LoginRedirectController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\ShowFailedDeliveryController;
 use App\Http\Controllers\ShowRecipientController;
 use App\Http\Controllers\ShowRuleController;
 use App\Http\Controllers\ShowUsernameController;
+use App\Http\Controllers\SpamWarningBehaviourController;
 use App\Http\Controllers\StoreFailedDeliveryController;
 use App\Http\Controllers\TestAutoCreateRegexController;
 use App\Http\Controllers\UseReplyToController;
@@ -51,9 +53,11 @@ use Illuminate\Support\Facades\Route;
 
 Auth::routes(['verify' => true, 'register' => config('anonaddy.enable_registration')]);
 
-// Get API access token
-Route::post('api/auth/login', [ApiAuthenticationController::class, 'login']);
-Route::post('api/auth/mfa', [ApiAuthenticationController::class, 'mfa']);
+// API login route needs CSRF middleware so that it can pass it to api/auth/mfa
+Route::controller(ApiAuthenticationController::class)->prefix('api/auth')->group(function () {
+    Route::post('/login', 'login');
+    Route::post('/mfa', 'mfa');
+});
 
 Route::controller(ForgotUsernameController::class)->group(function () {
     Route::get('/username/reminder', 'show')->name('username.reminder.show');
@@ -80,7 +84,7 @@ Route::group([
 ], function () {
     Route::controller(WebauthnController::class)->group(function () {
         Route::get('keys', 'index')->name('webauthn.index');
-        //Route::get('keys/create', 'create')->name('webauthn.create'); // No need to override
+        Route::get('keys/create', 'create')->name('webauthn.create');
         Route::post('keys', 'store')->name('webauthn.store');
         Route::delete('keys/{id}', 'delete'); // To override delete method and allow route caching
         Route::post('keys/{id}', 'destroy')->name('webauthn.destroy');
@@ -92,7 +96,7 @@ Route::group([
     });
 });
 
-Route::middleware(['auth', 'verified', '2fa', 'webauthn'])->group(function () {
+Route::middleware(['auth', 'verified', '2fa'])->group(function () {
     Route::get('/', [ShowDashboardController::class, 'index'])->name('dashboard.index');
 
     Route::controller(ShowAliasController::class)->group(function () {
@@ -122,13 +126,12 @@ Route::middleware(['auth', 'verified', '2fa', 'webauthn'])->group(function () {
     Route::get('/rules', [ShowRuleController::class, 'index'])->name('rules.index');
 
     Route::get('/failed-deliveries', [ShowFailedDeliveryController::class, 'index'])->name('failed_deliveries.index');
-    Route::get('/failed-deliveries/{id}/download', [DownloadableFailedDeliveryController::class, 'index'])->name('downloadable_failed_delivery.index');
 
     Route::post('/test-auto-create-regex', [TestAutoCreateRegexController::class, 'index'])->name('test_auto_create_regex.index');
 });
 
 Route::group([
-    'middleware' => ['auth', '2fa', 'webauthn'],
+    'middleware' => ['auth', '2fa'],
     'prefix' => 'settings',
 ], function () {
     Route::controller(SettingController::class)->group(function () {
@@ -151,6 +154,8 @@ Route::group([
 
     Route::post('/default-alias-format', [DefaultAliasFormatController::class, 'update'])->name('settings.default_alias_format');
 
+    Route::post('/alias-separator', [AliasSeparatorController::class, 'update'])->name('settings.alias_separator');
+
     Route::post('/display-from-format', [DisplayFromFormatController::class, 'update'])->name('settings.display_from_format');
 
     Route::post('/login-redirect', [LoginRedirectController::class, 'update'])->name('settings.login_redirect');
@@ -161,7 +166,11 @@ Route::group([
 
     Route::post('/banner-location', [BannerLocationController::class, 'update'])->name('settings.banner_location');
 
+    Route::post('/spam-warning-behaviour', [SpamWarningBehaviourController::class, 'update'])->name('settings.spam_warning_behaviour');
+
     Route::post('/store-failed-deliveries', [StoreFailedDeliveryController::class, 'update'])->name('settings.store_failed_deliveries');
+
+    Route::post('/dark-mode', [DarkModeController::class, 'update'])->name('settings.dark_mode');
 
     Route::post('/save-alias-last-used', [SaveAliasLastUsedController::class, 'update'])->name('settings.save_alias_last_used');
 

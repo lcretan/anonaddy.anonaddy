@@ -11,12 +11,14 @@ use App\Http\Controllers\Api\AliasRecipientController;
 use App\Http\Controllers\Api\AllowedRecipientController;
 use App\Http\Controllers\Api\ApiTokenDetailController;
 use App\Http\Controllers\Api\AppVersionController;
+use App\Http\Controllers\Api\AttachedRecipientOnlyController;
 use App\Http\Controllers\Api\CatchAllDomainController;
 use App\Http\Controllers\Api\CatchAllUsernameController;
 use App\Http\Controllers\Api\ChartDataController;
 use App\Http\Controllers\Api\DomainController;
 use App\Http\Controllers\Api\DomainDefaultRecipientController;
 use App\Http\Controllers\Api\DomainOptionController;
+use App\Http\Controllers\Api\DownloadableFailedDeliveryController;
 use App\Http\Controllers\Api\EncryptedRecipientController;
 use App\Http\Controllers\Api\FailedDeliveryController;
 use App\Http\Controllers\Api\InlineEncryptedRecipientController;
@@ -24,10 +26,14 @@ use App\Http\Controllers\Api\LoginableUsernameController;
 use App\Http\Controllers\Api\ProtectedHeadersRecipientController;
 use App\Http\Controllers\Api\RecipientController;
 use App\Http\Controllers\Api\RecipientKeyController;
+use App\Http\Controllers\Api\RemovePgpKeysRecipientController;
+use App\Http\Controllers\Api\RemovePgpSignaturesRecipientController;
 use App\Http\Controllers\Api\ReorderRuleController;
+use App\Http\Controllers\Api\ResendableFailedDeliveryController;
 use App\Http\Controllers\Api\RuleController;
 use App\Http\Controllers\Api\UsernameController;
 use App\Http\Controllers\Api\UsernameDefaultRecipientController;
+use App\Http\Controllers\Auth\ApiAuthenticationController;
 use App\Http\Controllers\RecipientVerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +47,12 @@ use Illuminate\Support\Facades\Route;
 | is assigned the "api" middleware group. Enjoy building your API!
 |
 */
+
+// API auth routes for mobile apps and browser extension
+Route::controller(ApiAuthenticationController::class)->prefix('auth')->group(function () {
+    Route::post('/logout', 'logout');
+    Route::post('/delete-account', 'destroy');
+});
 
 Route::group([
     'middleware' => ['auth:sanctum', 'verified'],
@@ -69,6 +81,11 @@ Route::group([
     Route::controller(ActiveAliasController::class)->group(function () {
         Route::post('/active-aliases', 'store');
         Route::delete('/active-aliases/{id}', 'destroy');
+    });
+
+    Route::controller(AttachedRecipientOnlyController::class)->group(function () {
+        Route::post('/attached-recipients-only', 'store');
+        Route::delete('/attached-recipients-only/{id}', 'destroy');
     });
 
     Route::post('/alias-recipients', [AliasRecipientController::class, 'store']);
@@ -100,6 +117,15 @@ Route::group([
     Route::controller(ProtectedHeadersRecipientController::class)->group(function () {
         Route::post('/protected-headers-recipients', 'store');
         Route::delete('/protected-headers-recipients/{id}', 'destroy');
+    });
+    Route::controller(RemovePgpKeysRecipientController::class)->group(function () {
+        Route::post('/remove-pgp-keys-recipients', 'store');
+        Route::delete('/remove-pgp-keys-recipients/{id}', 'destroy');
+    });
+
+    Route::controller(RemovePgpSignaturesRecipientController::class)->group(function () {
+        Route::post('/remove-pgp-signatures-recipients', 'store');
+        Route::delete('/remove-pgp-signatures-recipients/{id}', 'destroy');
     });
 
     Route::controller(AllowedRecipientController::class)->group(function () {
@@ -172,6 +198,9 @@ Route::group([
         Route::get('/failed-deliveries/{id}', 'show');
         Route::delete('/failed-deliveries/{id}', 'destroy');
     });
+
+    Route::get('/failed-deliveries/{id}/download', [DownloadableFailedDeliveryController::class, 'index']);
+    Route::post('/failed-deliveries/{id}/resend', [ResendableFailedDeliveryController::class, 'index']);
 
     Route::get('/domain-options', [DomainOptionController::class, 'index']);
 

@@ -152,13 +152,11 @@ Yes there is an [open-source](https://github.com/anonaddy/browser-extension) bro
 
 ## Is there an Android app?
 
-Yes, there is an excellent [open-source](https://gitlab.com/Stjin/anonaddy-android) Android app created by [Stjin](https://twitter.com/Stjinchan) that is available to download from the [Play Store](https://play.google.com/store/apps/details?id=host.stjin.anonaddy) (paid) and [F-Droid](https://f-droid.org/packages/host.stjin.anonaddy) (free). The developer of this app has put in a lot of time and effort so if you would like to support him please purchase the Play Store version.
-
-There is also another [open-source](https://github.com/KhalidWar/anonaddy) Android app created by [KhalidWar](https://github.com/KhalidWar) available on the [Play Store](https://play.google.com/store/apps/details?id=com.khalidwar.anonaddy).
+Yes, there's the official [open-source](https://github.com/anonaddy/addy-android) Android app created by [Stjin](https://x.com/Stjinchan) that is available to download from the [Play Store](https://play.google.com/store/apps/details?id=host.stjin.anonaddy) and [F-Droid](https://f-droid.org/packages/host.stjin.anonaddy).
 
 ## Is there an iOS app?
 
-Yes, [KhalidWar's](https://github.com/KhalidWar) [open-source](https://github.com/KhalidWar/anonaddy) app from above is also available on the [App Store](https://apps.apple.com/us/app/addymanager/id1547461270).
+Yes, there's the official [open-source](https://github.com/anonaddy/addy-ios) iOS app created by [Stjin](https://x.com/Stjinchan) that is available to download from the [App Store](https://apps.apple.com/app/addy-io/id6563138633).
 
 ## Is there a Raycast extension?
 
@@ -515,7 +513,7 @@ For full details please see the [self-hosting instructions file](SELF-HOSTING.md
 
 ## My sponsors
 
-Thanks to [Vlad Timofeev](https://github.com/vlad-timofeev), [Patrick Dobler](https://github.com/patrickdobler), [Luca Steeb](https://github.com/steebchen), [narolinus](https://github.com/narolinus) and [Lukas](https://github.com/lunibo) for supporting me by sponsoring the project on GitHub!
+Thanks to [Vlad Timofeev](https://github.com/vlad-timofeev), [Patrick Dobler](https://github.com/patrickdobler), [Luca Steeb](https://github.com/steebchen), [narolinus](https://github.com/narolinus), [Lukas](https://github.com/lunibo) and [Mioi Hanaoka](https://github.com/mioi) for supporting me by sponsoring the project on GitHub!
 
 Also an extra special thanks to [CrazyMax](https://github.com/crazy-max) for sponsoring me and also creating and maintaining the awesome [addy.io Docker image](https://github.com/anonaddy/docker)!
 

@@ -260,7 +260,6 @@ smtpd_recipient_restrictions =
    reject_rhsbl_reverse_client dbl.spamhaus.org,
    reject_rhsbl_sender dbl.spamhaus.org,
    reject_rbl_client zen.spamhaus.org
-   reject_rbl_client dul.dnsbl.sorbs.net
 
 # Block clients that speak too early.
 smtpd_data_restrictions = reject_unauth_pipelining
@@ -615,7 +614,7 @@ sudo service postfix restart
 
 ## Installing Redis
 
-Redis is an advanced key-value store that we will use for caching, sessions, queues and more. To install Redis, run the following commands (instructions from [https://redis.io/docs/getting-started/installation/install-redis-on-linux/](https://redis.io/docs/getting-started/installation/install-redis-on-linux/)):
+Redis is an advanced key-value store that we will use for caching, sessions, queues and more. To install Redis, run the following commands (instructions from [https://redis.io/docs/latest/operate/oss_and_stack/install/archive/install-redis/install-redis-on-linux/](https://redis.io/docs/latest/operate/oss_and_stack/install/archive/install-redis/install-redis-on-linux/)):
 
 ```bash
 # Install prerequisites
@@ -1359,11 +1358,8 @@ npm run production
 # Run any database migrations
 php artisan migrate --force
 
-# Clear cache
-php artisan config:cache
-php artisan view:cache
-php artisan route:cache
-php artisan event:cache
+# Cache config, events, routes and views
+php artisan optimize
 
 # Restart queue workers to reflect changes
 php artisan queue:restart

@@ -131,6 +131,12 @@ class AliasController extends Controller
             if ($format === 'random_words') {
                 // Random Words
                 $localPart = user()->generateRandomWordLocalPart();
+            } elseif ($format === 'random_male_name') {
+                $localPart = user()->generateRandomNameLocalPart('male');
+            } elseif ($format === 'random_female_name') {
+                $localPart = user()->generateRandomNameLocalPart('female');
+            } elseif ($format === 'random_noun') {
+                $localPart = user()->generateRandomNounLocalPart();
             } elseif ($format === 'uuid') {
                 // UUID
                 $localPart = Uuid::uuid4();
@@ -211,7 +217,7 @@ class AliasController extends Controller
     {
         $alias = user()->aliases()->findOrFail($id);
 
-        $alias->recipients()->detach();
+        $alias->detachAllRecipients();
 
         $alias->delete();
 
@@ -222,7 +228,7 @@ class AliasController extends Controller
     {
         $alias = user()->aliases()->withTrashed()->findOrFail($id);
 
-        $alias->recipients()->detach();
+        $alias->detachAllRecipients();
 
         if ($alias->hasSharedDomain()) {
             // Remove all data from the alias and change user_id

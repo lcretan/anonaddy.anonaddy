@@ -93,7 +93,7 @@ try {
         exit(0);
     }
 
-    //$senderEmail = strtolower($args['sender']);
+    // $senderEmail = strtolower($args['sender']);
     [$aliasLocalPart, $aliasDomain] = explode('@', $aliasEmail);
 
     if (! mb_check_encoding($aliasLocalPart, 'ASCII')) {
@@ -272,7 +272,7 @@ function getIdFromVerp($verpLocalPart, $verpEmail)
     $parts = explode('_', $verpLocalPart);
 
     if (count($parts) !== 3) {
-        //logData('VERP invalid email: '.$verp);
+        // logData('VERP invalid email: '.$verp);
 
         return;
     }
@@ -287,7 +287,7 @@ function getIdFromVerp($verpLocalPart, $verpEmail)
         return;
     }
 
-    $expectedSignature = substr(hash_hmac('sha3-224', $id, $_ENV['ANONADDY_VERP_SECRET'] ?? ''), 0, 8);
+    $expectedSignature = substr(hash_hmac('sha3-224', $id, $_ENV['ANONADDY_SECRET'] ?? ''), 0, 8);
 
     if ($signature !== $expectedSignature) {
         logData('VERP invalid signature: '.$verpEmail);

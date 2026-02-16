@@ -41,6 +41,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'from_name',
         'email_subject',
         'banner_location',
+        'spam_warning_behaviour',
         'display_from_format',
         'login_redirect',
         'catch_all',
@@ -50,13 +51,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'defer_new_aliases_until',
         'default_alias_domain',
         'default_alias_format',
+        'alias_separator',
         'use_reply_to',
         'store_failed_deliveries',
         'save_alias_last_used',
+        'dark_mode',
         'default_username_id',
         'default_recipient_id',
         'password',
         'two_factor_enabled',
+        'webauthn_enabled',
         'two_factor_secret',
         'two_factor_backup_code',
     ];
@@ -90,9 +94,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'default_recipient_id' => 'string',
         'catch_all' => 'boolean',
         'two_factor_enabled' => 'boolean',
+        'webauthn_enabled' => 'boolean',
         'use_reply_to' => 'boolean',
         'store_failed_deliveries' => 'boolean',
         'save_alias_last_used' => 'boolean',
+        'dark_mode' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'email_verified_at' => 'datetime',
@@ -430,6 +436,10 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function hasVerifiedDefaultRecipient()
     {
+        if (! isset($this->defaultRecipient->email_verified_at)) {
+            return false;
+        }
+
         return ! is_null($this->defaultRecipient->email_verified_at);
     }
 
@@ -576,11 +586,49 @@ class User extends Authenticatable implements MustVerifyEmail
         }
     }
 
+    /**
+     * Get the separator character to use when generating alias local parts.
+     * Resolves 'random' to one of '.', '_', '-' per generation.
+     */
+    public function aliasSeparatorForGeneration(): string
+    {
+        $setting = $this->alias_separator ?? '.';
+        if ($setting === 'random') {
+            return ['.', '_', '-'][mt_rand(0, 2)];
+        }
+
+        return $setting;
+    }
+
     public function generateRandomWordLocalPart()
     {
-        return collect(config('anonaddy.wordlist'))
-            ->random(2)
-            ->implode('.').mt_rand(0, 999);
+        $sep = $this->aliasSeparatorForGeneration();
+        $words = collect(config('anonaddy.wordlist'))->random(2)->map(fn ($w) => strtolower($w));
+
+        return $words->implode($sep).mt_rand(0, 999);
+    }
+
+    public function generateRandomNameLocalPart(string $gender): string
+    {
+        $firstNames = $gender === 'male'
+            ? config('anonaddy.male_first_names')
+            : config('anonaddy.female_first_names');
+        $first = collect($firstNames)->random();
+        $surname = collect(config('anonaddy.surnames'))->random();
+        $digits = str_pad((string) mt_rand(0, 999), 3, '0', STR_PAD_LEFT);
+        $sep = $this->aliasSeparatorForGeneration();
+
+        return strtolower($first).$sep.strtolower($surname).$digits;
+    }
+
+    public function generateRandomNounLocalPart(): string
+    {
+        $adjective = collect(config('anonaddy.adjectives'))->random();
+        $noun = collect(config('anonaddy.nouns'))->random();
+        $digits = str_pad((string) mt_rand(0, 999), 3, '0', STR_PAD_LEFT);
+        $sep = $this->aliasSeparatorForGeneration();
+
+        return strtolower($adjective).$sep.strtolower($noun).$digits;
     }
 
     public function generateRandomCharacterLocalPart(int $length): string
@@ -603,12 +651,17 @@ class User extends Authenticatable implements MustVerifyEmail
 
         $allDomains = config('anonaddy.all_domains')[0] ? config('anonaddy.all_domains') : [config('anonaddy.domain')];
 
-        return $this->usernames()
-            ->pluck('username')
-            ->flatMap(function ($username) use ($allDomains) {
-                return collect($allDomains)->map(function ($domain) use ($username) {
-                    return $username.'.'.$domain;
-                });
+        return collect()
+            ->when($this->canCreateUsernameSubdomainAliases(), function (Collection $collection) use ($allDomains) {
+                $usernameSubdomains = $this->usernames()
+                    ->pluck('username')
+                    ->flatMap(function ($username) use ($allDomains) {
+                        return collect($allDomains)->map(function ($domain) use ($username) {
+                            return $username.'.'.$domain;
+                        });
+                    });
+
+                return $collection->concat($usernameSubdomains);
             })
             ->concat($customDomains)
             ->when($this->canCreateSharedDomainAliases(), function (Collection $collection) use ($allDomains) {
@@ -635,5 +688,35 @@ class User extends Authenticatable implements MustVerifyEmail
     public function canCreateSharedDomainAliases()
     {
         return config('anonaddy.non_admin_shared_domains') || $this->isAdminUser();
+    }
+
+    public function canCreateUsernameSubdomainAliases()
+    {
+        return config('anonaddy.non_admin_username_subdomains') || $this->isAdminUser();
+    }
+
+    /**
+     * Check if user has any 2FA method enabled
+     */
+    public function hasAnyTwoFactorEnabled()
+    {
+        return $this->hasTotpEnabled() || $this->hasWebauthnEnabled();
+    }
+
+    /**
+     * Check if user has TOTP enabled
+     */
+    public function hasTotpEnabled()
+    {
+        return $this->two_factor_enabled;
+    }
+
+    /**
+     * Check if user has WebAuthn enabled
+     */
+    public function hasWebauthnEnabled()
+    {
+        // Fallback to old logic - check if user has enabled webauthn keys
+        return $this->webauthn_enabled;
     }
 }

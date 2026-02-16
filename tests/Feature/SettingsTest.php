@@ -166,6 +166,28 @@ class SettingsTest extends TestCase
     }
 
     #[Test]
+    public function user_cannot_update_default_username_when_user_is_external()
+    {
+        $this->user->defaultUsername->external_id = 'test';
+        $this->user->defaultUsername->save();
+
+        $currentDefaultUsername = $this->user->defaultUsername;
+
+        $newDefaultUsername = Username::factory()->create([
+            'user_id' => $this->user->id,
+            'can_login' => false,
+        ]);
+
+        $this->assertNotEquals($currentDefaultUsername->id, $newDefaultUsername->id);
+
+        $response = $this->post('/settings/default-username', [
+            'id' => $newDefaultUsername->id,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    #[Test]
     public function user_can_update_default_alias_domain()
     {
         $defaultAliasDomain = $this->user->username.'.anonaddy.me';
@@ -336,6 +358,34 @@ class SettingsTest extends TestCase
 
         $response->assertSessionHasErrors(['banner_location']);
         $this->assertEquals('top', $this->user->banner_location);
+    }
+
+    #[Test]
+    public function user_can_update_spam_warning_behaviour()
+    {
+        $this->assertEquals('banner', $this->user->spam_warning_behaviour);
+
+        $response = $this->post('/settings/spam-warning-behaviour', [
+            'spam_warning_behaviour' => 'subject',
+        ]);
+
+        $response->assertStatus(302);
+        $this->assertEquals('subject', $this->user->spam_warning_behaviour);
+    }
+
+    #[Test]
+    public function user_cannot_update_spam_warning_behaviour_to_incorrect_value()
+    {
+        $this->assertEquals('banner', $this->user->spam_warning_behaviour);
+
+        $response = $this->post('/settings/spam-warning-behaviour', [
+            'spam_warning_behaviour' => 'side',
+        ]);
+
+        $response->assertStatus(302);
+
+        $response->assertSessionHasErrors(['spam_warning_behaviour']);
+        $this->assertEquals('banner', $this->user->spam_warning_behaviour);
     }
 
     #[Test]

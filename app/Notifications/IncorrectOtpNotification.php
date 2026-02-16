@@ -41,7 +41,6 @@ class IncorrectOtpNotification extends Notification implements ShouldBeEncrypted
                 'userId' => $notifiable->id,
                 'recipientId' => $recipient->id,
                 'emailType' => 'FLA',
-                'hasVerifiedEmail' => $recipient->hasVerifiedEmail(),
                 'fingerprint' => $fingerprint,
                 'username' => $notifiable->username,
             ])

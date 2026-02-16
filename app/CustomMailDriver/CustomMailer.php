@@ -88,12 +88,14 @@ class CustomMailer extends Mailer
             }
 
             if ($encryptedSymfonyMessage) {
+                $encrypted = true;
                 $symfonyMessage = $encryptedSymfonyMessage;
             }
         }
 
         // Already encrypted
         if (isset($data['encryptedParts']) && $data['encryptedParts']) {
+            $encrypted = true;
             $symfonyMessage = (new AlreadyEncrypted($data['encryptedParts']))->update($symfonyMessage);
         }
 
@@ -205,6 +207,21 @@ class CustomMailer extends Mailer
                         $recipient = Recipient::find($failedDelivery->recipient_id);
                         $alias = Alias::find($failedDelivery->alias_id);
 
+                        if ($alias) {
+                            // Decrement the alias forward count due to failed delivery
+                            if ($emailType === 'F' && $alias->emails_forwarded > 0) {
+                                $alias->decrement('emails_forwarded');
+                            }
+
+                            if ($emailType === 'R' && $alias->emails_replied > 0) {
+                                $alias->decrement('emails_replied');
+                            }
+
+                            if ($emailType === 'S' && $alias->emails_sent > 0) {
+                                $alias->decrement('emails_sent');
+                            }
+                        }
+
                         $notifiable = $recipient?->email_verified_at ? $recipient : $user?->defaultRecipient;
 
                         // Notify user of failed delivery
@@ -231,6 +248,7 @@ class CustomMailer extends Mailer
                             'alias_id' => $data['aliasId'] ?? null,
                             'recipient_id' => $data['recipientId'] ?? null,
                             'email_type' => $data['emailType'],
+                            'encrypted' => $encrypted ?? false,
                         ]);
                     } catch (Exception $e) {
                         report($e);

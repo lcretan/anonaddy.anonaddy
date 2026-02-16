@@ -34,7 +34,7 @@ class ShowAliasController extends Controller
             ],
             'active' => [
                 'nullable',
-                'in:true,false',
+                'in:true,false,both',
                 'string',
             ],
             'shared_domain' => [
@@ -99,6 +99,9 @@ class ShowAliasController extends Controller
         $direction = $request->session()->get('aliasesSortDirection', 'desc');
         $compareOperator = $request->session()->get('aliasesSortCompareOperator', '>');
 
+        // current alias status options: active, inactive, all, deleted, active_inactive
+        $currentAliasStatus = $request->session()->get('currentAliasStatus', 'active_inactive');
+
         if ($request->has('sort')) {
             $direction = strpos($request->input('sort'), '-') === 0 ? 'desc' : 'asc';
             $sort = ltrim($request->input('sort'), '-');
@@ -106,6 +109,20 @@ class ShowAliasController extends Controller
 
             $request->session()->put('aliasesSort', $sort);
             $request->session()->put('aliasesSortDirection', $direction);
+        }
+
+        if ($request->has('active')) {
+            $currentAliasStatus = match ($request->input('active')) {
+                'both' => 'active_inactive',
+                'true' => 'active',
+                'false' => 'inactive',
+                default => 'active_inactive',
+            };
+
+            $request->session()->put('currentAliasStatus', $currentAliasStatus);
+        } elseif ($request->has('deleted')) {
+            $currentAliasStatus = $request->input('deleted') === 'with' ? 'all' : 'deleted';
+            $request->session()->put('currentAliasStatus', $currentAliasStatus);
         }
 
         $aliases = user()->aliases()
@@ -152,8 +169,8 @@ class ShowAliasController extends Controller
             }, function ($query) {
                 return $query->latest();
             })
-            ->when($request->input('active'), function ($query, $value) {
-                $active = $value === 'true' ? true : false;
+            ->when(in_array($currentAliasStatus, ['active', 'inactive']), function ($query, $value) use ($currentAliasStatus) {
+                $active = $currentAliasStatus === 'active' ? true : false;
 
                 return $query->where('active', $active);
             })
@@ -170,11 +187,11 @@ class ShowAliasController extends Controller
             ]);
 
         // Check if with deleted
-        if ($request->deleted === 'with') {
+        if ($currentAliasStatus === 'all') {
             $aliases->withTrashed();
         }
 
-        if ($request->deleted === 'only') {
+        if ($currentAliasStatus === 'deleted') {
             $aliases->onlyTrashed();
         }
 
@@ -194,19 +211,11 @@ class ShowAliasController extends Controller
 
         $aliases = $aliases->paginate($validated['page_size'] ?? 25)->withQueryString()->onEachSide(1);
 
-        if ($request->has('active')) {
-            $currentAliasStatus = $request->input('active') === 'true' ? 'active' : 'inactive';
-        } elseif ($request->has('deleted')) {
-            $currentAliasStatus = $request->input('deleted') === 'with' ? 'all' : 'deleted';
-        } else {
-            $currentAliasStatus = 'active_inactive';
-        }
-
         return Inertia::render('Aliases/Index', [
             'initialRows' => fn () => $aliases,
             'recipientOptions' => fn () => user()->verifiedRecipients()->select(['id', 'email'])->get(),
-            'domain' => fn () => config('anonaddy.domain'),
-            'subdomain' => fn () => user()->username.'.'.config('anonaddy.domain'),
+            'domain' => fn () => user()->canCreateSharedDomainAliases() ? config('anonaddy.domain') : null,
+            'subdomain' => fn () => user()->canCreateUsernameSubdomainAliases() ? user()->username.'.'.config('anonaddy.domain') : null,
             'domainOptions' => fn () => user()->domainOptions(),
             'defaultAliasDomain' => fn () => user()->default_alias_domain,
             'defaultAliasFormat' => fn () => user()->default_alias_format,
@@ -224,7 +233,7 @@ class ShowAliasController extends Controller
         $alias = user()->aliases()->withTrashed()->findOrFail($id);
 
         return Inertia::render('Aliases/Edit', [
-            'initialAlias' => $alias->only(['id', 'user_id', 'local_part', 'extension', 'domain', 'email', 'active', 'description', 'from_name', 'deleted_at', 'updated_at']),
+            'initialAlias' => $alias->only(['id', 'user_id', 'local_part', 'extension', 'domain', 'email', 'active', 'description', 'from_name', 'attached_recipients_only', 'deleted_at', 'updated_at']),
         ]);
     }
 }

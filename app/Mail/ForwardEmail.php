@@ -2,13 +2,13 @@
 
 namespace App\Mail;
 
-use App\CustomMailDriver\Mime\Part\InlineImagePart;
+use App\CustomMailDriver\Mime\Part\CustomDataPart;
 use App\Enums\DisplayFromFormat;
 use App\Models\Alias;
 use App\Models\EmailData;
 use App\Models\Recipient;
 use App\Notifications\FailedDeliveryNotification;
-use App\Traits\CheckUserRules;
+use App\Traits\ApplyUserRules;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -21,7 +21,7 @@ use Throwable;
 
 class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 {
-    use CheckUserRules;
+    use ApplyUserRules;
     use Queueable;
     use SerializesModels;
 
@@ -65,6 +65,12 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
     protected $isSpam;
 
+    protected $failedDmarc;
+
+    protected $resend;
+
+    protected $resendFromEmail;
+
     protected $fingerprint;
 
     protected $encryptedParts;
@@ -101,12 +107,14 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
     protected $verpDomain;
 
+    protected $ruleIds;
+
     /**
      * Create a new message instance.
      *
      * @return void
      */
-    public function __construct(Alias $alias, EmailData $emailData, Recipient $recipient, $isSpam = false)
+    public function __construct(Alias $alias, EmailData $emailData, Recipient $recipient, $resend = false, $ruleIds = null)
     {
         $this->user = $alias->user;
         $this->alias = $alias;
@@ -119,9 +127,9 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
         // Create and swap with alias reply-to addresses to allow easy reply-all
         if (count($this->ccs)) {
             $this->ccs = collect($this->ccs)
-                ->map(function ($cc) {
+                ->map(function ($cc) use ($resend) {
                     // Leave alias email Cc as it is
-                    if (stripEmailExtension($cc['address']) === $this->alias->email) {
+                    if (stripEmailExtension($cc['address']) === $this->alias->email && ! $resend) {
                         return [
                             'display' => $cc['display'] != $cc['address'] ? $cc['display'] : null,
                             'address' => $this->alias->email,
@@ -130,7 +138,7 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
                     return [
                         'display' => $cc['display'] != $cc['address'] ? $cc['display'] : null,
-                        'address' => $this->alias->local_part.'+'.Str::replaceLast('@', '=', $cc['address']).'@'.$this->alias->domain,
+                        'address' => $resend ? $cc['address'] : $this->alias->local_part.'+'.Str::replaceLast('@', '=', $cc['address']).'@'.$this->alias->domain,
                     ];
                 })
                 ->filter(fn ($cc) => filter_var($cc['address'], FILTER_VALIDATE_EMAIL))
@@ -153,9 +161,9 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
                     'address' => $this->alias->email,
                 ]);
             })
-            ->map(function ($to) {
+            ->map(function ($to) use ($resend) {
                 // Leave alias email To as it is
-                if (stripEmailExtension($to['address']) === $this->alias->email) {
+                if (stripEmailExtension($to['address']) === $this->alias->email && ! $resend) {
                     return [
                         'display' => $to['display'] != $to['address'] ? $to['display'] : null,
                         'address' => $this->alias->email,
@@ -164,7 +172,7 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
                 return [
                     'display' => $to['display'] != $to['address'] ? $to['display'] : null,
-                    'address' => $this->alias->local_part.'+'.Str::replaceLast('@', '=', $to['address']).'@'.$this->alias->domain,
+                    'address' => $resend ? $to['address'] : $this->alias->local_part.'+'.Str::replaceLast('@', '=', $to['address']).'@'.$this->alias->domain,
                 ];
             })
             ->filter(fn ($to) => filter_var($to['address'], FILTER_VALIDATE_EMAIL))
@@ -204,8 +212,10 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
         $this->fingerprint = $recipient->should_encrypt && ! $this->isAlreadyEncrypted() ? $recipient->fingerprint : null;
 
-        $this->bannerLocationText = $this->bannerLocationHtml = $this->isAlreadyEncrypted() ? 'off' : $this->alias->user->banner_location;
-        $this->isSpam = $isSpam;
+        $this->bannerLocationText = $this->bannerLocationHtml = $this->isAlreadyEncrypted() || $resend ? 'off' : $this->alias->user->banner_location;
+        $this->ruleIds = $ruleIds;
+        $this->isSpam = $emailData->isSpam;
+        $this->failedDmarc = $emailData->failedDmarc;
     }
 
     /**
@@ -216,7 +226,9 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
     public function build()
     {
         // Check if the user is using the old reply-to and from headers
-        if ($this->user->use_reply_to) {
+        if ($this->resendFromEmail) {
+            $this->fromEmail = $this->resendFromEmail;
+        } elseif ($this->user->use_reply_to) {
             $this->fromEmail = $this->alias->email;
 
             $replyToEmail = $this->alias->local_part.'+'.Str::replaceLast('@', '=', $this->replyToAddress).'@'.$this->alias->domain;
@@ -237,9 +249,18 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
         $displayFrom = $this->getUserDisplayFrom(base64_decode($this->displayFrom));
 
+        $spamWarningBehaviour = $this->user->spam_warning_behaviour;
+        $showSpamBanner = ($this->isSpam || $this->failedDmarc) && $spamWarningBehaviour === 'banner';
+
+        $subject = $this->user->email_subject ?? base64_decode($this->emailSubject);
+        if (($this->isSpam || $this->failedDmarc) && $spamWarningBehaviour === 'subject') {
+            $prefix = $this->failedDmarc ? '[DMARC FAIL]' : '[SPAM]';
+            $subject = $prefix.' '.$subject;
+        }
+
         $this->email = $this
             ->from($this->fromEmail, $displayFrom)
-            ->subject($this->user->email_subject ?? base64_decode($this->emailSubject))
+            ->subject($subject)
             ->withSymfonyMessage(function (Email $message) {
 
                 $message->getHeaders()
@@ -316,11 +337,25 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
                 if ($this->emailInlineAttachments) {
                     foreach ($this->emailInlineAttachments as $attachment) {
-                        $part = new InlineImagePart(base64_decode($attachment['stream']), base64_decode($attachment['file_name']), base64_decode($attachment['mime']));
+                        $part = new CustomDataPart(base64_decode($attachment['stream']), base64_decode($attachment['file_name']), base64_decode($attachment['mime']));
 
                         $part->asInline();
 
                         $part->setContentId(base64_decode($attachment['contentId']));
+                        $part->setFileName(base64_decode($attachment['file_name']));
+
+                        $message->addPart($part);
+                    }
+                }
+
+                if ($this->emailAttachments) {
+                    foreach ($this->emailAttachments as $attachment) {
+                        $part = new CustomDataPart(base64_decode($attachment['stream']), base64_decode($attachment['file_name']), base64_decode($attachment['mime']));
+
+                        // Only set content-id if present
+                        if ($attachment['contentId']) {
+                            $part->setContentId(base64_decode($attachment['contentId']));
+                        }
                         $part->setFileName(base64_decode($attachment['file_name']));
 
                         $message->addPart($part);
@@ -335,6 +370,16 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
                 if ($this->originalTo) {
                     $message->getHeaders()
                         ->addTextHeader('X-AnonAddy-Original-To', $this->originalTo);
+                }
+
+                if ($this->isSpam) {
+                    $message->getHeaders()
+                        ->addTextHeader('X-AnonAddy-Spam', 'Yes');
+                }
+
+                if ($this->resend) {
+                    $message->getHeaders()
+                        ->addTextHeader('X-AnonAddy-Resend', 'Yes');
                 }
             });
 
@@ -353,8 +398,8 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
             ]);
         }
 
-        // No HTML content but isSpam, then force html version
-        if (! $this->emailHtml && $this->isSpam) {
+        // No HTML content but showing spam/DMARC banner, then force html version
+        if (! $this->emailHtml && $showSpamBanner) {
             // Turn off the banner for the plain text version
             $this->bannerLocationText = 'off';
 
@@ -370,22 +415,18 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
             ]);
         }
 
-        foreach ($this->emailAttachments as $attachment) {
-            $this->email->attachData(
-                base64_decode($attachment['stream']),
-                base64_decode($attachment['file_name']),
-                ['mime' => base64_decode($attachment['mime'])]
-            );
-        }
-
         $this->replacedSubject = $this->user->email_subject ? ' with subject "'.base64_decode($this->emailSubject).'"' : null;
 
-        $this->checkRules('Forwards');
+        if ($this->ruleIds) {
+            $this->applyRulesByIds($this->ruleIds);
+        }
 
         $this->email->with([
             'locationText' => $this->bannerLocationText,
             'locationHtml' => $this->bannerLocationHtml,
             'isSpam' => $this->isSpam,
+            'failedDmarc' => $this->failedDmarc,
+            'showSpamBanner' => $showSpamBanner,
             'deactivateUrl' => $this->deactivateUrl,
             'aliasEmail' => $this->alias->email,
             'aliasDomain' => $this->alias->domain,
@@ -461,6 +502,16 @@ class ForwardEmail extends Mailable implements ShouldBeEncrypted, ShouldQueue
 
     private function getUserDisplayFrom($displayFrom)
     {
+        // If there is no display from name
+        if ($displayFrom === $this->sender) {
+            return match ($this->user->display_from_format) {
+                DisplayFromFormat::BRACKETS => str_replace('@', '(a)', $this->sender),
+                DisplayFromFormat::DOMAINONLY => Str::afterLast($this->sender, '@'),
+                DisplayFromFormat::NONE => null,
+                default => str_replace('@', ' at ', $this->sender),
+            };
+        }
+
         // Check user display_from_format settings and then return correct format
         return match ($this->user->display_from_format) {
             DisplayFromFormat::DEFAULT => str_replace('@', ' at ', $displayFrom." '".$this->sender."'"),

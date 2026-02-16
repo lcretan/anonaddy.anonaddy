@@ -5,17 +5,19 @@
 
     <div class="sm:flex sm:items-center mb-6">
       <div class="sm:flex-auto">
-        <h1 class="text-2xl font-semibold text-grey-900">Edit Recipient</h1>
-        <p class="mt-2 text-sm text-grey-700">Make changes to your recipient email address</p>
+        <h1 class="text-2xl font-semibold text-grey-900 dark:text-white">Edit Recipient</h1>
+        <p class="mt-2 text-sm text-grey-700 dark:text-grey-200">
+          Make changes to your recipient email address
+        </p>
       </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow p-4">
+    <div class="bg-white rounded-lg shadow p-4 dark:bg-grey-900">
       <div class="space-y-8 divide-y divide-grey-200">
         <div>
           <div class="flex items-center">
             <h3
-              class="text-xl font-medium leading-6 text-grey-900 cursor-pointer tooltip"
+              class="text-xl font-medium leading-6 text-grey-900 cursor-pointer tooltip dark:text-grey-100"
               data-tippy-content="Click to copy"
               @click="clipboard(recipient.email)"
             >
@@ -40,10 +42,10 @@
         <div class="pt-8">
           <label
             for="can_reply_send"
-            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default"
+            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default dark:text-grey-200"
             >Can Reply/Send from Aliases</label
           >
-          <p class="mt-1 text-base text-grey-700">
+          <p class="mt-1 text-base text-grey-700 dark:text-grey-200">
             Toggle this option to determine whether this recipient is allowed to reply and send from
             your aliases. When set to off this recipient will not be able to reply or send from your
             aliases and you will be notified when an attempt is made.
@@ -60,10 +62,10 @@
         <div class="pt-8">
           <label
             for="hide_email_subject"
-            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default"
+            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default dark:text-grey-200"
             >Hide Email Subject</label
           >
-          <p class="mt-1 text-base text-grey-700">
+          <p class="mt-1 text-base text-grey-700 dark:text-grey-200">
             <span v-if="!recipient.fingerprint"
               >You <b>must add a PGP key before you can use this setting</b>.</span
             >
@@ -96,10 +98,10 @@
         <div class="pt-8">
           <label
             for="use_inline_encryption"
-            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default"
+            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default dark:text-grey-200"
             >Use PGP/Inline Encryption</label
           >
-          <p class="mt-1 text-base text-grey-700">
+          <p class="mt-1 text-base text-grey-700 dark:text-grey-200">
             <span v-if="!recipient.fingerprint"
               >You <b>must add a PGP key before you can use this setting</b>.</span
             >
@@ -127,6 +129,58 @@
             "
             v-model="recipient.inline_encryption"
             disabled="disabled"
+          />
+        </div>
+
+        <div class="pt-8">
+          <label
+            for="remove_pgp_keys"
+            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default dark:text-grey-200"
+            >Remove PGP Keys from Replies/Sends</label
+          >
+          <p class="mt-1 text-base text-grey-700 dark:text-grey-200">
+            When enabled any attached PGP keys for replies/sends from this recipient will be
+            automatically removed. This is to prevent you from accidentally sending the PGP key of
+            your recipient which could inadvertently reveal your real email address. For example
+            Proton mail has an option to always attach your public PGP key to every email that you
+            send, this could expose your real email if sent through your aliases.
+          </p>
+          <p class="mt-4 text-base text-grey-700 dark:text-grey-200">
+            <b>Only disable this option if you are certain</b> that you can not accidentally send
+            the PGP key of your recipient when replying/sending from your aliases.
+          </p>
+          <Toggle
+            id="remove_pgp_keys"
+            class="mt-4"
+            v-model="recipient.remove_pgp_keys"
+            @on="turnOnRemovePgpKeys"
+            @off="turnOffRemovePgpKeys"
+          />
+        </div>
+
+        <div class="pt-8">
+          <label
+            for="remove_pgp_signatures"
+            class="block font-medium text-grey-700 text-lg pointer-events-none cursor-default dark:text-grey-200"
+            >Remove PGP Signatures from Replies/Sends</label
+          >
+          <p class="mt-1 text-base text-grey-700 dark:text-grey-200">
+            When enabled any attached PGP signatures for replies/sends from this recipient will be
+            automatically removed. This is to prevent you from accidentally signing an outbound
+            email with your recipient's PGP key which could inadvertently reveal your real email
+            address.
+          </p>
+          <p class="mt-4 text-base text-grey-700 dark:text-grey-200">
+            <b>Only disable this option if you are certain</b> that you can not accidentally sign
+            outbound emails using the PGP key of your recipient when replying/sending from your
+            aliases.
+          </p>
+          <Toggle
+            id="remove_pgp_signatures"
+            class="mt-4"
+            v-model="recipient.remove_pgp_signatures"
+            @on="turnOnRemovePgpSignatures"
+            @off="turnOffRemovePgpSignatures"
           />
         </div>
 
@@ -258,6 +312,78 @@ const turnOffProtectedHeaders = () => {
     .delete(`/api/v1/protected-headers-recipients/${recipient.value.id}`)
     .then(response => {
       successMessage('Hide email subject disabled')
+    })
+    .catch(error => {
+      errorMessage()
+    })
+}
+
+const turnOnRemovePgpKeys = () => {
+  axios
+    .post(
+      `/api/v1/remove-pgp-keys-recipients`,
+      JSON.stringify({
+        id: recipient.value.id,
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+    .then(response => {
+      recipient.value.remove_pgp_keys = true
+      successMessage('Remove PGP keys enabled')
+    })
+    .catch(error => {
+      if (error.response.status === 422) {
+        errorMessage(error.response.data)
+      } else {
+        errorMessage()
+      }
+    })
+}
+
+const turnOffRemovePgpKeys = () => {
+  axios
+    .delete(`/api/v1/remove-pgp-keys-recipients/${recipient.value.id}`)
+    .then(response => {
+      recipient.value.remove_pgp_keys = false
+      successMessage('Remove PGP keys disabled')
+    })
+    .catch(error => {
+      errorMessage()
+    })
+}
+
+const turnOnRemovePgpSignatures = () => {
+  axios
+    .post(
+      `/api/v1/remove-pgp-signatures-recipients`,
+      JSON.stringify({
+        id: recipient.value.id,
+      }),
+      {
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+    .then(response => {
+      recipient.value.remove_pgp_signatures = true
+      successMessage('Remove PGP signatures enabled')
+    })
+    .catch(error => {
+      if (error.response.status === 422) {
+        errorMessage(error.response.data)
+      } else {
+        errorMessage()
+      }
+    })
+}
+
+const turnOffRemovePgpSignatures = () => {
+  axios
+    .delete(`/api/v1/remove-pgp-signatures-recipients/${recipient.value.id}`)
+    .then(response => {
+      recipient.value.remove_pgp_signatures = false
+      successMessage('Remove PGP signatures disabled')
     })
     .catch(error => {
       errorMessage()
